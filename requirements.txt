@@ -3,3 +3,4 @@ requests
 python-dotenv
 pillow
 imageio-ffmpeg
+tzdata

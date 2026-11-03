@@ -25,7 +25,6 @@ from PIL import Image, ImageDraw, ImageFont
 ROOT = Path(__file__).parent
 POSTS = ROOT / "posts"
 IMAGES = ROOT / "images"
-STATE = ROOT / "state.json"
 
 load_dotenv(ROOT / ".env")
 
@@ -59,10 +58,6 @@ Return only JSON (no other text) in this format:
   5) a final line with the 3-5 hashtags.
   No long paragraphs, never one solid block of text.
 - image_prompt: a detailed photo description in English (subject, style, lighting, colors, composition), square 1:1 for a feed post, with no text or lettering in the image. Explicitly state that there must be no logos, brand names, labels, signs or writing anywhere: uniforms, bottles and jars must be plain and unbranded."""
-
-
-def load_state() -> dict:
-    return json.loads(STATE.read_text(encoding="utf-8")) if STATE.exists() else {"next": 0}
 
 
 def write_post_text(topic: str) -> dict:
@@ -104,8 +99,8 @@ def brand_image(path: Path) -> None:
     draw.rectangle([margin - 3, margin - 3, size - margin + 2, size - margin + 2], outline=gold, width=3)
 
     # corner label (semi-transparent cream card)
-    serif = ["georgiab.ttf", "Georgia Bold.ttf", "DejaVuSerif-Bold.ttf"]
-    sans = ["segoeui.ttf", "Arial.ttf", "DejaVuSans.ttf"]
+    serif = ["georgiab.ttf", "Georgia Bold.ttf", str(ROOT / "fonts" / "Lora-Bold.ttf"), "DejaVuSerif-Bold.ttf"]
+    sans = ["segoeui.ttf", "Arial.ttf", str(ROOT / "fonts" / "OpenSans.ttf"), "DejaVuSans.ttf"]
     name_font, phone_font = _font(serif, 34), _font(sans, 28)
     name, phone = "Estetic Center of New York", "Tel: 111 111 1111"
     pad = 22
@@ -134,11 +129,9 @@ def make_image(prompt: str, path: Path) -> None:
 def generate(topic: str | None) -> Path:
     POSTS.mkdir(exist_ok=True)
     IMAGES.mkdir(exist_ok=True)
-    state = load_state()
     if topic is None:
-        topic = TOPICS[state["next"] % len(TOPICS)]
-        state["next"] += 1
-        STATE.write_text(json.dumps(state), encoding="utf-8")
+        # stateless rotation (works on hosts with an ephemeral disk): one topic per calendar day
+        topic = TOPICS[datetime.now().toordinal() % len(TOPICS)]
 
     content = write_post_text(topic)
     stamp = datetime.now().strftime("%Y-%m-%d-%H%M%S")
@@ -277,6 +270,14 @@ def publish_photo_story(image_path: Path, page_id: str, token: str) -> str:
     return r.json().get("post_id") or r.json().get("id")
 
 
+def run_once() -> None:
+    path = generate(None)
+    if os.getenv("AUTO_PUBLISH", "false").lower() == "true":
+        publish(path)
+    else:
+        print("AUTO_PUBLISH=false — პოსტი ელოდება დამტკიცებას. გამოსაქვეყნებლად: python agent.py publish", path)
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -292,11 +293,7 @@ def main() -> int:
     elif args.cmd == "publish":
         publish(Path(args.post))
     else:
-        path = generate(None)
-        if os.getenv("AUTO_PUBLISH", "false").lower() == "true":
-            publish(path)
-        else:
-            print("AUTO_PUBLISH=false — პოსტი ელოდება დამტკიცებას. გამოსაქვეყნებლად: python agent.py publish", path)
+        run_once()
     return 0
 
 
